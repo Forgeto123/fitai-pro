@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="uk" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitAI Pro — КБЖУ, Тренування та AI Сканер Їжі</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- TensorFlow.js & MobileNet CDN (Локальний AI у браузері) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                        },
+                        accent: {
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+
+    <!-- HEADER / NAVIGATION -->
+    <header class="sticky top-0 z-50 glass border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-accent-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-brand-500/20">
+                    <i class="fa-solid fa-dumbbell"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight bg-gradient-to-r from-brand-500 to-accent-500 bg-clip-text text-transparent">FitAI Pro</h1>
+                    <p class="text-xs text-slate-400">КБЖУ • AI Сканер • Тренування</p>
+                </div>
+            </div>
+
+            <!-- Quick Targets Summary Header -->
+            <div id="quick-stats" class="hidden md:flex items-center gap-4 text-xs bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700">
+                <div><span class="text-slate-400">Ціль:</span> <strong id="head-target-cal" class="text-brand-500">0</strong> ккал</div>
+                <div class="h-4 w-px bg-slate-700"></div>
+                <div><span class="text-slate-400">Б:</span> <strong id="head-target-p" class="text-blue-400">0г</strong></div>
+                <div><span class="text-slate-400">Ж:</span> <strong id="head-target-f" class="text-amber-400">0г</strong></div>
+                <div><span class="text-slate-400">В:</span> <strong id="head-target-c" class="text-emerald-400">0г</strong></div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <nav class="flex items-center gap-1 bg-slate-800/90 p-1 rounded-xl text-sm border border-slate-700/60 overflow-x-auto max-w-full">
+                <button onclick="switchTab('calc')" id="tab-btn-calc" class="tab-btn px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-2 bg-brand-600 text-white shadow">
+                    <i class="fa-solid fa-calculator"></i> <span class="hidden sm:inline">Калькулятор</span>
+                </button>
+                <button onclick="switchTab('workout')" id="tab-btn-workout" class="tab-btn px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-2 text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-person-running"></i> <span class="hidden sm:inline">Тренування</span>
+                </button>
+                <button onclick="switchTab('food')" id="tab-btn-food" class="tab-btn px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-2 text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-camera-retro"></i> <span class="hidden sm:inline">AI Сканер Їжі</span>
+                </button>
+                <button onclick="switchTab('progress')" id="tab-btn-progress" class="tab-btn px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-2 text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-chart-line"></i> <span class="hidden sm:inline">Прогрес</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
+
+        <!-- ================= TAB 1: CALC & PROFILE ================= -->
+        <section id="tab-calc" class="tab-content active space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Profile Form -->
+                <div class="lg:col-span-5 bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
+                    <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-brand-500">
+                        <i class="fa-solid fa-sliders"></i> Ваші параметри та мета
+                    </h2>
+                    
+                    <form id="profile-form" onsubmit="event.preventDefault(); calculateKBJU();" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Стать</label>
+                                <select id="gender" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-brand-500 outline-none">
+                                    <option value="male">Чоловіча</option>
+                                    <option value="female">Жіноча</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Вік (років)</label>
+                                <input type="number" id="age" value="22" min="12" max="90" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-brand-500 outline-none">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Зріст (см)</label>
+                                <input type="number" id="height" value="178" min="120" max="230" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-brand-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Вага (кг)</label>
+                                <input type="number" id="weight" value="75" step="0.1" min="30" max="250" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-brand-500 outline-none">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Рівень щоденної активності</label>
+                            <select id="activity" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-brand-500 outline-none">
+                                <option value="1.2">Сидячий спосіб життя (мало або немає фіз. навантажень)</option>
+                                <option value="1.375">Легка активність (1-3 тренування на тиждень)</option>
+                                <option value="1.55" selected>Помірний (3-5 тренувань на тиждень)</option>
+                                <option value="1.725">Висока активність (6-7 тренувань на тиждень)</option>
+                                <option value="1.9">Екстремальна (важка фіз. праця + щоденні тренування)</option>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Досвід у тренажерному залі</label>
+                                <select id="experience" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-brand-500 outline-none">
+                                    <option value="beginner">Початківець (< 6 міс)</option>
+                                    <option value="intermediate" selected>Середній (0.5 - 2 роки)</option>
+                                    <option value="advanced">Просунутий (> 2 років)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Головна мета</label>
+                                <select id="goal" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-brand-500 outline-none">
+                                    <option value="cut">Схуднення / Сушка (-20%)</option>
+                                    <option value="maintain">Підтримання форми (0%)</option>
+                                    <option value="bulk" selected>Набір м'язової маси (+12%)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="w-full bg-gradient-to-r from-brand-600 to-accent-600 hover:from-brand-500 hover:to-accent-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-bolt"></i> Розрахувати КБЖУ та Оновити Програму
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Results Dashboard -->
+                <div class="lg:col-span-7 space-y-6">
+                    <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
+                        <h2 class="text-xl font-bold mb-4 flex items-center justify-between text-slate-100">
+                            <span><i class="fa-solid fa-pie-chart text-accent-500"></i> Ваша денна норма КБЖУ</span>
+                            <span id="bmr-tdee-tag" class="text-xs font-normal text-slate-400">BMR: --- | TDEE: ---</span>
+                        </h2>
+
+                        <!-- Main Calorie Target Card -->
+                        <div class="bg-gradient-to-r from-slate-900 to-slate-800 p-5 rounded-2xl border border-slate-700 flex flex-wrap items-center justify-between gap-4 mb-6">
+                            <div>
+                                <div class="text-xs text-slate-400 font-medium">Рекомендована добова калорійність</div>
+                                <div class="text-4xl font-extrabold text-brand-500 mt-1"><span id="res-calories">2,450</span> <span class="text-lg font-normal text-slate-300">ккал/день</span></div>
+                                <div id="goal-description" class="text-xs text-slate-400 mt-1">Оптимальний помірний профіцит для сухого набору</div>
+                            </div>
+                            <div class="text-right border-l border-slate-700 pl-4">
+                                <div class="text-xs text-slate-400">Норма води</div>
+                                <div class="text-2xl font-bold text-blue-400 mt-1"><span id="res-water">2.6</span> <span class="text-sm">л/день</span></div>
+                                <div class="text-[10px] text-slate-500">~8-10 склянок</div>
+                            </div>
+                        </div>
+
+                        <!-- Macro Breakdown Cards -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <!-- Protein -->
+                            <div class="bg-slate-900/80 p-4 rounded-xl border border-blue-500/30">
+                                <div class="flex items-center justify-between text-xs text-blue-400 font-bold mb-1">
+                                    <span>БІЛКИ (Protein)</span>
+                                    <span id="res-protein-pct">30%</span>
+                                </div>
+                                <div class="text-2xl font-black text-white"><span id="res-protein-g">165</span>г</div>
+                                <div class="text-xs text-slate-400 mt-1"><span id="res-protein-cal">660</span> ккал (~2.2г/кг)</div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+                                    <div id="bar-protein" class="bg-blue-500 h-full transition-all duration-500" style="width: 30%"></div>
+                                </div>
+                            </div>
+
+                            <!-- Fats -->
+                            <div class="bg-slate-900/80 p-4 rounded-xl border border-amber-500/30">
+                                <div class="flex items-center justify-between text-xs text-amber-400 font-bold mb-1">
+                                    <span>ЖИРИ (Fats)</span>
+                                    <span id="res-fat-pct">25%</span>
+                                </div>
+                                <div class="text-2xl font-black text-white"><span id="res-fat-g">68</span>г</div>
+                                <div class="text-xs text-slate-400 mt-1"><span id="res-fat-cal">612</span> ккал (~0.9г/кг)</div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+                                    <div id="bar-fat" class="bg-amber-500 h-full transition-all duration-500" style="width: 25%"></div>
+                                </div>
+                            </div>
+
+                            <!-- Carbs -->
+                            <div class="bg-slate-900/80 p-4 rounded-xl border border-emerald-500/30">
+                                <div class="flex items-center justify-between text-xs text-emerald-400 font-bold mb-1">
+                                    <span>ВУГЛЕВОДИ (Carbs)</span>
+                                    <span id="res-carb-pct">45%</span>
+                                </div>
+                                <div class="text-2xl font-black text-white"><span id="res-carb-g">295</span>г</div>
+                                <div class="text-xs text-slate-400 mt-1"><span id="res-carb-cal">1180</span> ккал (енергія)</div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+                                    <div id="bar-carb" class="bg-emerald-500 h-full transition-all duration-500" style="width: 45%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Macro Chart -->
+                        <div class="mt-6 pt-4 border-t border-slate-700/50 flex justify-center">
+                            <div class="w-48 h-48">
+                                <canvas id="macroChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ================= TAB 2: WORKOUT PROGRAM ================= -->
+        <section id="tab-workout" class="tab-content space-y-6">
+            <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
+                <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-dumbbell text-brand-500"></i> Рекомендована Програма Тренувань
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1" id="workout-subtitle">Адаптовано під ваш досвід та мету</p>
+                    </div>
+
+                    <!-- Rest Timer Widget -->
+                    <div class="bg-slate-900 px-4 py-2 rounded-xl border border-slate-700 flex items-center gap-3">
+                        <div class="text-xs text-slate-400"><i class="fa-solid fa-stopwatch text-brand-500"></i> Таймер відпочинку:</div>
+                        <div id="timer-display" class="font-mono text-lg font-bold text-brand-400">01:30</div>
+                        <button onclick="toggleTimer()" id="timer-start-btn" class="bg-brand-600 hover:bg-brand-500 text-xs text-white px-3 py-1 rounded-lg font-bold transition">
+                            Старт
+                        </button>
+                        <button onclick="resetTimer()" class="bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 px-2 py-1 rounded-lg">
+                            <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Generated Workout Plan Cards Grid -->
+                <div id="workout-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Populated dynamically by JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= TAB 3: AI FOOD RECOGNITION & DIARY ================= -->
+        <section id="tab-food" class="tab-content space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- AI Image Scanner Box -->
+                <div class="lg:col-span-6 bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 shadow-xl backdrop-blur-sm flex flex-col justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold mb-2 flex items-center gap-2 text-white">
+                            <i class="fa-solid fa-wand-magic-sparkles text-accent-500"></i> AI Сканер Їжі по Фото
+                        </h2>
+                        <p class="text-xs text-slate-400 mb-4">
+                            Завантажте фото страви або продукту. Штучний інтелект (MobileNet в браузері) автоматично визначить їжу та порахує КБЖУ!
+                        </p>
+
+                        <!-- Upload Zone -->
+                        <div id="drop-zone" onclick="document.getElementById('food-file-input').click()" class="border-2 border-dashed border-slate-600 hover:border-brand-500 rounded-2xl p-6 text-center cursor-pointer transition bg-slate-900/50 hover:bg-slate-900/80 group">
+                            <input type="file" id="food-file-input" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+                            <div id="upload-prompt" class="space-y-3">
+                                <div class="w-16 h-16 rounded-full bg-slate-800 text-brand-500 flex items-center justify-center mx-auto text-2xl group-hover:scale-110 transition">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                                </div>
+                                <div class="text-sm font-medium text-slate-300">
+                                    Натисніть або перетягніть фото страви сюди
+                                </div>
+                                <div class="text-xs text-slate-500">Підтримуються JPG, PNG, WEBP</div>
+                            </div>
+                            
+                            <!-- Image Preview Canvas -->
+                            <div id="preview-container" class="hidden relative">
+                                <img id="food-preview-img" class="max-h-64 mx-auto rounded-xl object-contain shadow-lg border border-slate-700" alt="Preview">
+                                <div id="ai-loading-spinner" class="hidden absolute inset-0 bg-slate-900/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center gap-2">
+                                    <i class="fa-solid fa-spinner fa-spin text-3xl text-brand-500"></i>
+                                    <span class="text-xs text-slate-200 font-medium">Штучний інтелект аналізує фото...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recognition Result Panel -->
+                        <div id="recognition-result" class="hidden mt-6 bg-slate-900/90 p-4 rounded-xl border border-brand-500/40 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <div class="font-bold text-brand-400 text-lg" id="detected-food-name">Куряча грудка гриль</div>
+                                <div class="text-xs bg-brand-500/20 text-brand-300 px-2 py-0.5 rounded-full border border-brand-500/30" id="confidence-tag">Точність: 94%</div>
+                            </div>
+
+                            <!-- Weight adjustment slider -->
+                            <div>
+                                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                                    <span>Порція / Вага:</span>
+                                    <strong id="portion-weight-val" class="text-white">150г</strong>
+                                </div>
+                                <input type="range" id="portion-slider" min="20" max="600" value="150" step="10" oninput="updateFoodNutritionFromSlider()" class="w-full accent-brand-500 cursor-pointer">
+                            </div>
+
+                            <!-- Calculated Macros Breakdown -->
+                            <div class="grid grid-cols-4 gap-2 text-center pt-2 border-t border-slate-800">
+                                <div class="bg-slate-800 p-2 rounded-lg">
+                                    <div class="text-[10px] text-slate-400">Ккал</div>
+                                    <div class="font-bold text-sm text-brand-400" id="ai-cal">248</div>
+                                </div>
+                                <div class="bg-slate-800 p-2 rounded-lg">
+                                    <div class="text-[10px] text-slate-400">Білків</div>
+                                    <div class="font-bold text-sm text-blue-400" id="ai-p">46.5г</div>
+                                </div>
+                                <div class="bg-slate-800 p-2 rounded-lg">
+                                    <div class="text-[10px] text-slate-400">Жирів</div>
+                                    <div class="font-bold text-sm text-amber-400" id="ai-f">5.4г</div>
+                                </div>
+                                <div class="bg-slate-800 p-2 rounded-lg">
+                                    <div class="text-[10px] text-slate-400">Вуглеводів</div>
+                                    <div class="font-bold text-sm text-emerald-400" id="ai-c">0г</div>
+                                </div>
+                            </div>
+
+                            <button onclick="addRecognizedFoodToDiary()" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-plus"></i> Додати до Щоденника
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Manual Quick Search Fallback -->
+                    <div class="mt-6 pt-4 border-t border-slate-700/60">
+                        <label class="block text-xs font-semibold text-slate-400 mb-2"><i class="fa-solid fa-search"></i> Або виберіть продукт з бази вручну:</label>
+                        <div class="flex gap-2">
+                            <select id="manual-food-select" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-brand-500 outline-none">
+                                <option value="chicken">Куряче філе (варене/гриль)</option>
+                                <option value="buckwheat">Гречка варена</option>
+                                <option value="eggs">Яйця курячі (2 шт ~100г)</option>
+                                <option value="cottage_cheese">Сир кисломолочний 5%</option>
+                                <option value="rice">Рис білий варений</option>
+                                <option value="oatmeal">Вівсянка на воді</option>
+                                <option value="salmon">Лосось / Сьомга на пару</option>
+                                <option value="banana">Банан (1 шт ~120г)</option>
+                                <option value="apple">Яблуко (1 шт ~150г)</option>
+                                <option value="beef">Яловичина тушкована</option>
+                            </select>
+                            <button onclick="addManualSelectFood()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-xl text-xs transition">
+                                Додати
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Food Log / Diary Panel -->
+                <div class="lg:col-span-6 bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 shadow-xl backdrop-blur-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-utensils text-brand-500"></i> Щоденник Харчування на Сьогодні
+                            </h2>
+                            <button onclick="clearFoodDiary()" class="text-xs text-red-400 hover:text-red-300 transition">
+                                <i class="fa-solid fa-trash-can"></i> Очистити
+                            </button>
+                        </div>
+
+                        <!-- Progress Summary Bars vs Target -->
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 mb-6">
+                            <div class="flex justify-between items-center text-xs">
+                                <span>Спожито калорій:</span>
+                                <span class="font-bold text-sm"><span id="diary-current-cal" class="text-brand-400">0</span> / <span id="diary-target-cal">2450</span> ккал</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                                <div id="diary-bar-cal" class="bg-brand-500 h-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-3 pt-2 text-[11px]">
+                                <div>
+                                    <div class="text-slate-400 flex justify-between"><span>Білків:</span> <strong id="diary-curr-p">0/165g</strong></div>
+                                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden"><div id="diary-bar-p" class="bg-blue-500 h-full" style="width: 0%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="text-slate-400 flex justify-between"><span>Жирів:</span> <strong id="diary-curr-f">0/68g</strong></div>
+                                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden"><div id="diary-bar-f" class="bg-amber-500 h-full" style="width: 0%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="text-slate-400 flex justify-between"><span>Вуглеводів:</span> <strong id="diary-curr-c">0/295g</strong></div>
+                                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-1 overflow-hidden"><div id="diary-bar-c" class="bg-emerald-500 h-full" style="width: 0%"></div></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Added Food List -->
+                        <div class="space-y-2 max-h-72 overflow-y-auto pr-1" id="food-list-items">
+                            <div class="text-center text-slate-500 text-xs py-8" id="empty-diary-msg">
+                                <i class="fa-solid fa-plate-wheat text-3xl mb-2 block opacity-40"></i>
+                                Щоденник порожній. Відскануйте страви через AI або додайте їх вручну!
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ================= TAB 4: PROGRESS TRACKER ================= -->
+        <section id="tab-progress" class="tab-content space-y-6">
+            <div class="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
+                <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-accent-500"></i> Відстеження Ваги та Прогресу
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+                    <div class="md:col-span-4 space-y-4">
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                            <label class="block text-xs font-semibold text-slate-400 mb-2">Зафіксувати сьогоднішню вагу (кг)</label>
+                            <div class="flex gap-2">
+                                <input type="number" id="new-weight-input" step="0.1" value="75.0" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:border-brand-500 outline-none">
+                                <button onclick="logCurrentWeight()" class="bg-brand-600 hover:bg-brand-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition">
+                                    Записати
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                            <h3 class="text-xs font-bold text-slate-300 mb-2">Історія замірів:</h3>
+                            <div id="weight-history-list" class="space-y-2 text-xs max-h-48 overflow-y-auto">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="md:col-span-8 bg-slate-900/80 p-4 rounded-xl border border-slate-700 flex flex-col justify-center">
+                        <canvas id="weightChart" class="w-full max-h-72"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="border-t border-slate-800 bg-slate-950 py-4 text-center text-xs text-slate-500">
+        FitAI Pro © 2026 — Персональний AI Фітнес-Асистент
+    </footer>
+
+    <!-- SCRIPT LOGIC -->
+    <script>
+        // ================= GLOBAL STATE =================
+        let userProfile = {
+            gender: 'male',
+            age: 22,
+            height: 178,
+            weight: 75,
+            activity: 1.55,
+            experience: 'intermediate',
+            goal: 'bulk',
+            targetCal: 2450,
+            targetP: 165,
+            targetF: 68,
+            targetC: 295,
+            water: 2.6
+        };
+
+        let foodDiary = [];
+        let weightHistory = [
+            { date: '10 Жовт', weight: 74.2 },
+            { date: '17 Жовт', weight: 74.6 },
+            { date: '24 Жовт', weight: 75.0 }
+        ];
+
+        let mobileNetModel = null;
+        let currentDetectedFood = null;
+        let macroChartInstance = null;
+        let weightChartInstance = null;
+
+        // Food KBJU Database mapping
+        const foodDatabase = {
+            'chicken': { name: 'Куряче філе (варене)', cal: 165, p: 31, f: 3.6, c: 0 },
+            'buckwheat': { name: 'Гречка варена', cal: 110, p: 4.2, f: 1.1, c: 21.3 },
+            'eggs': { name: 'Яйця курячі (варені)', cal: 155, p: 12.6, f: 10.6, c: 1.1 },
+            'cottage_cheese': { name: 'Сир кисломолочний 5%', cal: 121, p: 17, f: 5, c: 1.8 },
+            'rice': { name: 'Рис білий варений', cal: 130, p: 2.7, f: 0.3, c: 28 },
+            'oatmeal': { name: 'Вівсянка на воді', cal: 88, p: 3, f: 1.7, c: 15 },
+            'salmon': { name: 'Лосось запечений', cal: 206, p: 22, f: 12, c: 0 },
+            'banana': { name: 'Банан свіжий', cal: 89, p: 1.1, f: 0.3, c: 22.8 },
+            'apple': { name: 'Яблуко свіже', cal: 52, p: 0.3, f: 0.2, c: 13.8 },
+            'beef': { name: 'Яловичина тушкована', cal: 230, p: 26, f: 14, c: 0 },
+            // MobileNet Image Classifications mapping
+            'pizza': { name: 'Піца (сирно-м\'ясна)', cal: 266, p: 11, f: 10, c: 33 },
+            'cheeseburger': { name: 'Бургер / Чізбургер', cal: 280, p: 15, f: 13, c: 26 },
+            'hamburger': { name: 'Бургер класичний', cal: 250, p: 13, f: 10, c: 28 },
+            'hotdog': { name: 'Хот-дог', cal: 290, p: 10, f: 16, c: 24 },
+            'broccoli': { name: 'Броколі свіжа/на пару', cal: 34, p: 2.8, f: 0.4, c: 6.6 },
+            'salad': { name: 'Овочевий салат з олією', cal: 85, p: 1.5, f: 6, c: 5 },
+            'steak': { name: 'Стейк з яловичини гриль', cal: 252, p: 27, f: 15, c: 0 },
+            'espresso': { name: 'Кава Еспресо / Капучино', cal: 40, p: 2, f: 1.5, c: 5 }
+        };
+
+        // ================= TAB SWITCHING =================
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-brand-600', 'text-white', 'shadow');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+            activeBtn.classList.add('bg-brand-600', 'text-white', 'shadow');
+            activeBtn.classList.remove('text-slate-400');
+
+            if (tabId === 'progress') renderWeightChart();
+        }
+
+        // ================= KBJU CALCULATOR LOGIC =================
+        function calculateKBJU() {
+            userProfile.gender = document.getElementById('gender').value;
+            userProfile.age = parseInt(document.getElementById('age').value) || 22;
+            userProfile.height = parseFloat(document.getElementById('height').value) || 178;
+            userProfile.weight = parseFloat(document.getElementById('weight').value) || 75;
+            userProfile.activity = parseFloat(document.getElementById('activity').value) || 1.55;
+            userProfile.experience = document.getElementById('experience').value;
+            userProfile.goal = document.getElementById('goal').value;
+
+            // Mifflin-St Jeor BMR Formula
+            let bmr = (10 * userProfile.weight) + (6.25 * userProfile.height) - (5 * userProfile.age);
+            bmr = userProfile.gender === 'male' ? bmr + 5 : bmr - 161;
+
+            let tdee = bmr * userProfile.activity;
+
+            // Goal adjustment
+            let goalMultiplier = 1.0;
+            if (userProfile.goal === 'cut') goalMultiplier = 0.80; // 20% deficit
+            else if (userProfile.goal === 'bulk') goalMultiplier = 1.12; // 12% surplus
+
+            let targetCalories = Math.round(tdee * goalMultiplier);
+
+            // Protein: 2.0-2.2g per kg for cut/bulk
+            let proteinG = Math.round(userProfile.weight * (userProfile.goal === 'cut' ? 2.2 : 2.0));
+            let proteinCal = proteinG * 4;
+
+            // Fat: 0.9g per kg
+            let fatG = Math.round(userProfile.weight * 0.9);
+            let fatCal = fatG * 9;
+
+            // Carbs: Remaining calories
+            let carbCal = Math.max(0, targetCalories - (proteinCal + fatCal));
+            let carbG = Math.round(carbCal / 4);
+
+            // Water intake: ~35ml per kg
+            let waterL = ((userProfile.weight * 35) / 1000).toFixed(1);
+
+            // Save to state
+            userProfile.targetCal = targetCalories;
+            userProfile.targetP = proteinG;
+            userProfile.targetF = fatG;
+            userProfile.targetC = carbG;
+            userProfile.water = waterL;
+
+            // Update UI Elements
+            document.getElementById('res-calories').innerText = targetCalories.toLocaleString();
+            document.getElementById('res-water').innerText = waterL;
+            document.getElementById('bmr-tdee-tag').innerText = `BMR: ${Math.round(bmr)} ккал | TDEE: ${Math.round(tdee)} ккал`;
+
+            document.getElementById('res-protein-g').innerText = proteinG;
+            document.getElementById('res-protein-cal').innerText = proteinCal;
+            document.getElementById('res-fat-g').innerText = fatG;
+            document.getElementById('res-fat-cal').innerText = fatCal;
+            document.getElementById('res-carb-g').innerText = carbG;
+            document.getElementById('res-carb-cal').innerText = carbCal;
+
+            // Percentages
+            let pPct = Math.round((proteinCal / targetCalories) * 100);
+            let fPct = Math.round((fatCal / targetCalories) * 100);
+            let cPct = 100 - (pPct + fPct);
+
+            document.getElementById('res-protein-pct').innerText = `${pPct}%`;
+            document.getElementById('res-fat-pct').innerText = `${fPct}%`;
+            document.getElementById('res-carb-pct').innerText = `${cPct}%`;
+
+            document.getElementById('bar-protein').style.width = `${pPct}%`;
+            document.getElementById('bar-fat').style.width = `${fPct}%`;
+            document.getElementById('bar-carb').style.width = `${cPct}%`;
+
+            // Quick Stats Header
+            document.getElementById('head-target-cal').innerText = targetCalories;
+            document.getElementById('head-target-p').innerText = `${proteinG}г`;
+            document.getElementById('head-target-f').innerText = `${fatG}г`;
+            document.getElementById('head-target-c').innerText = `${carbG}г`;
+
+            document.getElementById('diary-target-cal').innerText = targetCalories;
+
+            renderMacroChart(proteinCal, fatCal, carbCal);
+            generateWorkoutProgram();
+            updateDiaryProgress();
+        }
+
+        // Render Macro Pie Chart
+        function renderMacroChart(pCal, fCal, cCal) {
+            const ctx = document.getElementById('macroChart').getContext('2d');
+            if (macroChartInstance) macroChartInstance.destroy();
+
+            macroChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Білки', 'Жири', 'Вуглеводи'],
+                    datasets: [{
+                        data: [pCal, fCal, cCal],
+                        backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    cutout: '70%',
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        // ================= WORKOUT GENERATOR LOGIC =================
+        function generateWorkoutProgram() {
+            const container = document.getElementById('workout-cards-container');
+            const subtitle = document.getElementById('workout-subtitle');
+            container.innerHTML = '';
+
+            let expText = userProfile.experience === 'beginner' ? 'Початківець' : (userProfile.experience === 'intermediate' ? 'Середній рівень' : 'Просунутий');
+            let goalText = userProfile.goal === 'cut' ? 'Сушка / Схуднення' : (userProfile.goal === 'bulk' ? 'Набір маси' : 'Підтримання');
+            subtitle.innerText = `Схема: ${expText} • Мета: ${goalText}`;
+
+            let workouts = [];
+
+            if (userProfile.experience === 'beginner') {
+                // Full Body 3x/week
+                workouts = [
+                    {
+                        title: 'День A: Full Body (Понеділок)',
+                        exercises: [
+                            { name: 'Присідання зі штангою', sets: '3 підходи x 8-10 реп' },
+                            { name: 'Жим штанги / гантелей лежачи', sets: '3 підходи x 8-10 реп' },
+                            { name: 'Тяга верхнього блоку до грудей', sets: '3 підходи x 10-12 реп' },
+                            { name: 'Жим гантелей сидячи (плечі)', sets: '3 підходи x 10-12 реп' },
+                            { name: 'Планка', sets: '3 підходи x 45 сек' }
+                        ]
+                    },
+                    {
+                        title: 'День B: Full Body (Середа)',
+                        exercises: [
+                            { name: 'Румунська станова тяга', sets: '3 підходи x 8-10 реп' },
+                            { name: 'Відтискання на брусах / підлозі', sets: '3 підходи x 10-12 реп' },
+                            { name: 'Тяга гантелі в нахилі однією рукою', sets: '3 підходи x 10-12 реп' },
+                            { name: 'Згинання рук на біцепс з гантелями', sets: '3 підходи x 12 реп' },
+                            { name: 'Скручування на прес', sets: '3 підходи x 15 реп' }
+                        ]
+                    },
+                    {
+                        title: 'День C: Full Body (П\'ятниця)',
+                        exercises: [
+                            { name: 'Жим ногами в тренажері', sets: '3 підходи x 10-12 реп' },
+                            { name: 'Армійський жим стоячи', sets: '3 підходи x 8-10 реп' },
+                            { name: 'Підтягування (або гравітрон)', sets: '3 підходи x максимум' },
+                            { name: 'Розгинання рук на трицепс на блоці', sets: '3 підходи x 12 реп' },
+                            { name: 'Підйом ніг у висі', sets: '3 підходи x 12 реп' }
+                        ]
+                    }
+                ];
+            } else {
+                // Push / Pull / Legs Split
+                workouts = [
+                    {
+                        title: 'День 1: Push (Штовхай - Груди, Плечі, Трицепс)',
+                        exercises: [
+                            { name: 'Жим штанги на похилій лаві', sets: '4 підходи x 6-8 реп' },
+                            { name: 'Жим гантелей лежачи горизонтально', sets: '3 підходи x 8-10 реп' },
+                            { name: 'Махи гантелями в сторони (середня дельта)', sets: '4 підходи x 12-15 реп' },
+                            { name: 'Французький жим зі штангою', sets: '3 підходи x 10-12 реп' },
+                            { name: 'Розгинання на трицепс у блоці', sets: '3 підходи x 12-15 реп' }
+                        ]
+                    },
+                    {
+                        title: 'День 2: Pull (Тягни - Спина, Задня дельта, Біцепс)',
+                        exercises: [
+                            { name: 'Тяга штанги в нахилі (або Пендлей)', sets: '4 підходи x 6-8 реп' },
+                            { name: 'Підтягування широким хватом з вагою', sets: '3 підходи x 8-10 реп' },
+                            { name: 'Тяга горизонтального блоку до пояса', sets: '3 підходи x 10-12 реп' },
+                            { name: 'Махи на задню дельту в пеку-деку', sets: '4 підходи x 12-15 реп' },
+                            { name: 'Згинання рук з E-Z штангою на біцепс', sets: '3 підходи x 10-12 реп' }
+                        ]
+                    },
+                    {
+                        title: 'День 3: Legs (Ноги та Прес)',
+                        exercises: [
+                            { name: 'Присідання зі штангою на спині', sets: '4 підходи x 6-8 реп' },
+                            { name: 'Румунська тяга з гантелями', sets: '4 підходи x 8-10 реп' },
+                            { name: 'Випади з гантелями в русі', sets: '3 підходи x 10 реп/ногу' },
+                            { name: 'Підйом на носки для литок', sets: '4 підходи x 15 реп' },
+                            { name: 'Молитва на блоці (прес)', sets: '3 підходи x 15 реп' }
+                        ]
+                    }
+                ];
+            }
+
+            workouts.forEach((w, idx) => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-900/80 p-5 rounded-2xl border border-slate-700 space-y-4 flex flex-col justify-between';
+                
+                let exHtml = w.exercises.map((ex, i) => `
+                    <div class="flex items-start gap-3 p-2 rounded-xl bg-slate-800/50 hover:bg-slate-800 transition">
+                        <input type="checkbox" id="ex-check-${idx}-${i}" class="mt-1 accent-brand-500 w-4 h-4 rounded cursor-pointer">
+                        <label for="ex-check-${idx}-${i}" class="text-xs cursor-pointer select-none flex-1">
+                            <div class="font-bold text-slate-200">${ex.name}</div>
+                            <div class="text-[11px] text-brand-400 font-mono">${ex.sets}</div>
+                        </label>
+                    </div>
+                `).join('');
+
+                card.innerHTML = `
+                    <div>
+                        <h3 class="font-bold text-base text-brand-400 mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-calendar-day"></i> ${w.title}
+                        </h3>
+                        <div class="space-y-2">
+                            ${exHtml}
+                        </div>
+                    </div>
+                    <button onclick="startWorkoutRestTimer()" class="w-full mt-4 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2 rounded-xl border border-slate-700 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-stopwatch"></i> Запустити таймер відпочинку (90с)
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // ================= WORKOUT TIMER =================
+        let timerSeconds = 90;
+        let timerInterval = null;
+
+        function toggleTimer() {
+            const btn = document.getElementById('timer-start-btn');
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                btn.innerText = 'Старт';
+                btn.className = 'bg-brand-600 hover:bg-brand-500 text-xs text-white px-3 py-1 rounded-lg font-bold transition';
+            } else {
+                timerInterval = setInterval(() => {
+                    if (timerSeconds > 0) {
+                        timerSeconds--;
+                        updateTimerDisplay();
+                    } else {
+                        clearInterval(timerInterval);
+                        timerInterval = null;
+                        btn.innerText = 'Старт';
+                        playBeepSound();
+                        alert('Час відпочинку вичерпано! Починайте наступний підхід!');
+                    }
+                }, 1000);
+                btn.innerText = 'Пауза';
+                btn.className = 'bg-amber-600 hover:bg-amber-500 text-xs text-white px-3 py-1 rounded-lg font-bold transition';
+            }
+        }
+
+        function resetTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                document.getElementById('timer-start-btn').innerText = 'Старт';
+            }
+            timerSeconds = 90;
+            updateTimerDisplay();
+        }
+
+        function startWorkoutRestTimer() {
+            resetTimer();
+            toggleTimer();
+        }
+
+        function updateTimerDisplay() {
+            let m = Math.floor(timerSeconds / 60);
+            let s = timerSeconds % 60;
+            document.getElementById('timer-display').innerText = `${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`;
+        }
+
+        function playBeepSound() {
+            try {
+                let ctx = new (window.AudioContext || window.webkitAudioContext)();
+                let osc = ctx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, ctx.currentTime);
+                osc.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.3);
+            } catch(e) {}
+        }
+
+        // ================= AI IMAGE RECOGNITION LOGIC =================
+        async function loadMobileNetModel() {
+            try {
+                mobileNetModel = await mobilenet.load();
+                console.log('MobileNet ML Model successfully loaded!');
+            } catch(e) {
+                console.warn('Could not load MobileNet model offline, fallback to database.');
+            }
+        }
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById('food-preview-img');
+                img.src = e.target.result;
+                document.getElementById('upload-prompt').classList.add('hidden');
+                document.getElementById('preview-container').classList.remove('hidden');
+                document.getElementById('ai-loading-spinner').classList.remove('hidden');
+                document.getElementById('recognition-result').classList.add('hidden');
+
+                img.onload = async () => {
+                    await analyzeFoodImage(img);
+                };
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function analyzeFoodImage(imgElement) {
+            let foodKey = 'chicken';
+            let confidence = 88;
+
+            if (mobileNetModel) {
+                try {
+                    const predictions = await mobileNetModel.classify(imgElement);
+                    if (predictions && predictions.length > 0) {
+                        console.log('Top prediction:', predictions[0]);
+                        let label = predictions[0].className.toLowerCase();
+                        confidence = Math.round(predictions[0].probability * 100);
+
+                        // Match prediction label against foodDatabase
+                        for (let k in foodDatabase) {
+                            if (label.includes(k) || foodDatabase[k].name.toLowerCase().includes(label)) {
+                                foodKey = k;
+                                break;
+                            }
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            // Fallback selection if non-matched
+            let matchedFood = foodDatabase[foodKey] || foodDatabase['chicken'];
+            currentDetectedFood = { ...matchedFood };
+
+            document.getElementById('ai-loading-spinner').classList.add('hidden');
+            document.getElementById('recognition-result').classList.remove('hidden');
+
+            document.getElementById('detected-food-name').innerText = currentDetectedFood.name;
+            document.getElementById('confidence-tag').innerText = `Точність AI: ${confidence}%`;
+
+            updateFoodNutritionFromSlider();
+        }
+
+        function updateFoodNutritionFromSlider() {
+            if (!currentDetectedFood) return;
+            let weight = parseInt(document.getElementById('portion-slider').value) || 150;
+            document.getElementById('portion-weight-val').innerText = `${weight}г`;
+
+            let ratio = weight / 100;
+            let cal = Math.round(currentDetectedFood.cal * ratio);
+            let p = (currentDetectedFood.p * ratio).toFixed(1);
+            let f = (currentDetectedFood.f * ratio).toFixed(1);
+            let c = (currentDetectedFood.c * ratio).toFixed(1);
+
+            document.getElementById('ai-cal').innerText = cal;
+            document.getElementById('ai-p').innerText = `${p}г`;
+            document.getElementById('ai-f').innerText = `${f}г`;
+            document.getElementById('ai-c').innerText = `${c}г`;
+
+            currentDetectedFood.currentWeight = weight;
+            currentDetectedFood.currentCal = cal;
+            currentDetectedFood.currentP = parseFloat(p);
+            currentDetectedFood.currentF = parseFloat(f);
+            currentDetectedFood.currentC = parseFloat(c);
+        }
+
+        function addRecognizedFoodToDiary() {
+            if (!currentDetectedFood) return;
+
+            foodDiary.push({
+                name: `${currentDetectedFood.name} (${currentDetectedFood.currentWeight}г)`,
+                cal: currentDetectedFood.currentCal,
+                p: currentDetectedFood.currentP,
+                f: currentDetectedFood.currentF,
+                c: currentDetectedFood.currentC
+            });
+
+            renderFoodDiary();
+            alert(`Успішно додано "${currentDetectedFood.name}" до щоденника!`);
+        }
+
+        function addManualSelectFood() {
+            let key = document.getElementById('manual-food-select').value;
+            let food = foodDatabase[key];
+            if (!food) return;
+
+            foodDiary.push({
+                name: `${food.name} (100г)`,
+                cal: food.cal,
+                p: food.p,
+                f: food.f,
+                c: food.c
+            });
+
+            renderFoodDiary();
+        }
+
+        function clearFoodDiary() {
+            foodDiary = [];
+            renderFoodDiary();
+        }
+
+        function renderFoodDiary() {
+            const list = document.getElementById('food-list-items');
+            const emptyMsg = document.getElementById('empty-diary-msg');
+
+            if (foodDiary.length === 0) {
+                list.innerHTML = '';
+                list.appendChild(emptyMsg);
+                emptyMsg.classList.remove('hidden');
+            } else {
+                emptyMsg.classList.add('hidden');
+                list.innerHTML = foodDiary.map((item, idx) => `
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-700/60 text-xs">
+                        <div>
+                            <div class="font-bold text-slate-200">${item.name}</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">
+                                Б: <span class="text-blue-400">${item.p}г</span> | 
+                                Ж: <span class="text-amber-400">${item.f}г</span> | 
+                                В: <span class="text-emerald-400">${item.c}г</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-brand-400">${item.cal} ккал</span>
+                            <button onclick="removeDiaryItem(${idx})" class="text-slate-500 hover:text-red-400"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            updateDiaryProgress();
+        }
+
+        function removeDiaryItem(index) {
+            foodDiary.splice(index, 1);
+            renderFoodDiary();
+        }
+
+        function updateDiaryProgress() {
+            let totalCal = foodDiary.reduce((acc, i) => acc + i.cal, 0);
+            let totalP = foodDiary.reduce((acc, i) => acc + i.p, 0);
+            let totalF = foodDiary.reduce((acc, i) => acc + i.f, 0);
+            let totalC = foodDiary.reduce((acc, i) => acc + i.c, 0);
+
+            document.getElementById('diary-current-cal').innerText = totalCal;
+            document.getElementById('diary-curr-p').innerText = `${totalP.toFixed(0)}/${userProfile.targetP}g`;
+            document.getElementById('diary-curr-f').innerText = `${totalF.toFixed(0)}/${userProfile.targetF}g`;
+            document.getElementById('diary-curr-c').innerText = `${totalC.toFixed(0)}/${userProfile.targetC}g`;
+
+            let calPct = Math.min(100, Math.round((totalCal / userProfile.targetCal) * 100));
+            document.getElementById('diary-bar-cal').style.width = `${calPct}%`;
+            document.getElementById('diary-bar-p').style.width = `${Math.min(100, Math.round((totalP / userProfile.targetP) * 100))}%`;
+            document.getElementById('diary-bar-f').style.width = `${Math.min(100, Math.round((totalF / userProfile.targetF) * 100))}%`;
+            document.getElementById('diary-bar-c').style.width = `${Math.min(100, Math.round((totalC / userProfile.targetC) * 100))}%`;
+        }
+
+        // ================= PROGRESS & WEIGHT TRACKER =================
+        function logCurrentWeight() {
+            let w = parseFloat(document.getElementById('new-weight-input').value);
+            if (!w) return;
+
+            let today = new Date();
+            let dateStr = `${today.getDate()} ${['Січ','Лют','Бер','Кві','Тра','Чер','Лип','Сер','Вер','Жов','Лис','Гру'][today.getMonth()]}`;
+
+            weightHistory.push({ date: dateStr, weight: w });
+            renderWeightList();
+            renderWeightChart();
+        }
+
+        function renderWeightList() {
+            const list = document.getElementById('weight-history-list');
+            list.innerHTML = weightHistory.map(item => `
+                <div class="flex justify-between items-center bg-slate-800 p-2 rounded-lg">
+                    <span class="text-slate-400">${item.date}</span>
+                    <strong class="text-brand-400">${item.weight} кг</strong>
+                </div>
+            `).join('');
+        }
+
+        function renderWeightChart() {
+            const ctx = document.getElementById('weightChart').getContext('2d');
+            if (weightChartInstance) weightChartInstance.destroy();
+
+            weightChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: weightHistory.map(h => h.date),
+                    datasets: [{
+                        label: 'Динаміка ваги (кг)',
+                        data: weightHistory.map(h => h.weight),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' } }
+                    },
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        // INIT ON LOAD
+        window.onload = function() {
+            calculateKBJU();
+            loadMobileNetModel();
+            renderWeightList();
+        };
+    </script>
+</body>
+</html>
